@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DEK Configurator v30</title>
+<title>DEK Configurator v31</title>
 <style>
 :root {
   --bg:#f4f6f9; --card:#fff; --line:#d8dee8; --text:#1f2937; --muted:#607083; --accent:#2369c9;
@@ -80,7 +80,7 @@ button.danger { background:#fff4f4; border-color:#efc7c7; color:#973737; }
 <body>
 <div class="app">
   <section class="card hero">
-    <h1>Конфигуратор щитов DEKraft / Systeme Electric — v20</h1>
+    <h1>Конфигуратор щитов DEKraft / Systeme Electric — v31</h1>
     <p>Добавлены пользовательские блоки AutoCAD по вашим именам, блоки корпусов ЩРНМ и монтажных плат по вашему стандарту, а также учтены реальные габариты аппаратов из загруженных PDF по ВА-105, ВА-103, ВА-201, ВН-102, МК-103, ДИФ-103 и УЗДП-103. Вкладка <b>«Разное»</b> позволяет вручную добавлять свои обозначения, референсы, наименования, модули и имя блока для DXF-экспорта. Excel-выгрузка результата сохранена.</p>
   </section>
 
@@ -102,14 +102,14 @@ button.danger { background:#fff4f4; border-color:#efc7c7; color:#973737; }
     <div class="editor-head">
       <div>
         <h2>Ввод щитов</h2>
-        <div class="hint">Отдельная строка на каждый щит. Слева — название щита, справа — коды аппаратов. Примеры: <b>320, 116, 3.20, 1.16, 12ав316, 3x320, 2хд25</b>.</div>
+        <div class="hint">Отдельная строка на каждый щит. Слева — название щита, справа — коды аппаратов. Примеры: <b>320, 116, 3.20, 1.16, 12ав316, 3x320, 316 x6, 2хд25</b>. Количество: <b>10ав310, 6д16, 3b116, 2вн316</b>. Латинская <b>d</b> — характеристика D, русская <b>д</b> — дифавтомат. Новая строка — новая DIN-рейка; аппараты через запятую размещаются на одной рейке.</div>
       </div>
       <div><button id="addRow" class="secondary">+ Добавить щит</button></div>
     </div>
     <div id="rows" class="rows"></div>
     <div class="box" style="margin-top:12px;">
       <h4 style="margin:0 0 8px;">Массовая вставка из Excel</h4>
-      <div class="hint">Скопируйте из Excel сразу два столбца: <b>1-й столбец — название щита</b>, <b>2-й столбец — коды/состав аппаратов</b>. Вставьте сюда табличный фрагмент и нажмите импорт. Поддерживаются строки, разделённые табуляцией. Коды вроде <b>9d16</b> и <b>10д20</b> распознаются как количество + дифавтомат.</div>
+      <div class="hint">Скопируйте из Excel сразу два столбца: <b>1-й столбец — название щита</b>, <b>2-й столбец — коды/состав аппаратов</b>. Вставьте сюда табличный фрагмент и нажмите импорт. Поддерживаются строки, разделённые табуляцией. Коды вроде <b>9д16</b> и <b>10д20</b> распознаются как количество + дифавтомат.</div>
       <div class="field" style="margin-top:10px;"><textarea id="bulkPaste" placeholder="ЩРН-1&#9;320, 116, 316 x6, д25, км440&#10;ЩРН-2&#9;3.20, 1.16, 3x316, вн332"></textarea></div>
       <div class="actions">
         <button id="importBulkReplace" class="secondary">Импортировать и заменить список</button>
@@ -228,7 +228,7 @@ function enclosureSizeKey(r) {
 function mountLayoutSpec(rOrEnc) {
   const r = rOrEnc?.enclosure ? rOrEnc : {enclosure:rOrEnc};
   const key = enclosureSizeKey(r);
-  if (MOUNT_LAYOUT_MAP[key]) return MOUNT_LAYOUT_MAP[key];
+  if (r.enclosure?.width_mm && r.enclosure?.height_mm && MOUNT_LAYOUT_MAP[key]) return MOUNT_LAYOUT_MAP[key];
   const dims = enclosureDims(r?.enclosure || r);
   const h = Number(dims.height || 0);
   const w = Number(dims.width || 0);
@@ -241,7 +241,7 @@ function mountLayoutSpec(rOrEnc) {
   let count = Math.max(1, Number(r?.displayRailCount || 1));
   const cap = Number(r?.enclosure?.capacity_max || 0);
   if (cap) count = Math.max(1, Math.ceil(cap / modulesPerPlate));
-  if (w === 300 && h <= 400) count = 1;
+  if (w === 300 && h <= 400 && r.enclosure?.width_mm) count = 1;
   return {count, spacing, plateHeight: 35, modulesPerPlate};
 }
 
@@ -259,6 +259,7 @@ function railPositions(enc, railCount) {
     const start = top + Math.max(35, ((h - top - bottom) - totalSpan) / 2);
     for (let i = 0; i < spec.count; i++) centers.push(start + i * spec.spacing);
   }
+  while (centers.length < railCount) centers.push(centers[centers.length - 1] + spec.spacing);
   const plateHeight = Number(spec.plateHeight || 35);
   const topEdge = Math.max(8, centers[0] - plateHeight / 2);
   const bottomEdge = Math.min(h - bottom, centers[centers.length - 1] + plateHeight / 2);
@@ -295,19 +296,19 @@ function physicalDimensions(product) {
   if (/ВА-201/i.test(desc) || /ВА-201/i.test(series)) {
     return { width_mm: { '1P':27.0, '2P':54.0, '3P':81.0, '4P':107.9988 }[poles] || (Number(product?.width_units || 1) * 27.0), height_mm: 90.6, depth_mm: 72.5 };
   }
-  if (/ВА-105/i.test(desc) || /ВА-105/i.test(series)) {
+  if (/ВА-105/i.test(desc) || (/ВА-105/i.test(series) && product?.category === 'mcb')) {
     return { width_mm: { '1P':17.9948, '2P':35.9896, '3P':53.98963, '4P':71.9792 }[poles] || (Number(product?.width_units || 1) * 17.9948), height_mm: 92, depth_mm: 73 };
   }
-  if (/ВА-103/i.test(desc) || /ВА-103/i.test(series)) {
+  if (/ВА-103/i.test(desc) || (/ВА-103/i.test(series) && product?.category === 'mcb')) {
     return { width_mm: { '1P':17.9948, '2P':35.9896, '3P':53.98963, '4P':71.9792 }[poles] || (Number(product?.width_units || 1) * 17.9948), height_mm: 80, depth_mm: 73 };
   }
   if (/ВН-102/i.test(desc) || product?.category === 'load_switch') {
     return { width_mm: { '1P':17.9948, '2P':35.9896, '3P':53.98963, '4P':71.9792 }[poles] || (Number(product?.width_units || 1) * 17.9948), height_mm: 80, depth_mm: 70 };
   }
-  if (/УЗДП-103/i.test(desc) || product?.category === 'afdd') {
+  if (/УЗДП-103/i.test(desc) ) {
     return { width_mm: nominal <= 32 ? 35.9923 : 53.8, height_mm: 105.5, depth_mm: 75.2 };
   }
-  if (/ДИФ-103/i.test(desc) || product?.category === 'rcbo') {
+  if (/ДИФ-103/i.test(desc) ) {
     if (poles === '3P+N' || poles === '4P') return { width_mm: nominal <= 32 ? 89.9845 : 124.7, height_mm: 106.4, depth_mm: 74 };
     if (poles === '3P') return { width_mm: nominal <= 32 ? 89.9845 : 107.0, height_mm: 106.4, depth_mm: 74 };
     return { width_mm: nominal <= 32 ? 35.9923 : 53.8, height_mm: 106.4, depth_mm: 74 };
@@ -343,7 +344,7 @@ function blockNominalWidthMm(blockName, fallback) {
 }
 function deviceWidthMm(dev) {
   const fallback = Number(dev?.width_mm || 0) || (Number(dev?.modules || 1) * 18);
-  return blockNominalWidthMm(deviceBlockName(dev), fallback);
+  return fallback;
 }
 function deviceBlockAnchorMmByName(blockName, widthMm) {
   void blockName;
@@ -578,31 +579,32 @@ function addRow(name='', codes='') {
 function renumber() { [...document.querySelectorAll('#rows .row')].forEach((r,i) => r.querySelector('.idx').textContent = String(i+1)); }
 function resetRows(list) { document.getElementById('rows').innerHTML = ''; list.forEach(x => addRow(x.name, x.codes)); }
 
+function checkedToken(qty, alias) {
+  if (!Number.isSafeInteger(qty) || qty < 1 || qty > 1000) throw new Error('Количество должно быть целым числом от 1 до 1000.');
+  return {qty, alias, displayCode: alias};
+}
 function parseToken(token) {
-  const raw = String(token || '').trim();
-  let normalized = norm(raw);
-  normalized = normalized.replace(/^d(?=\d)/i, 'д');
-  let m = normalized.match(/^(\d+)\s*ав\s*(.+)$/iu);
-  if (m) return { qty: Number(m[1]), alias: m[2], displayCode: m[2].replace(/\./g,'') };
-  m = normalized.match(/^(\d+)\s*[xх×*]\s*(.+)$/iu);
-  if (m) return { qty: Number(m[1]), alias: m[2], displayCode: m[2].replace(/\./g,'') };
-  m = normalized.match(/^(.+?)\s*[xх×*]\s*(\d+)$/iu);
-  if (m) return { qty: Number(m[2]), alias: m[1], displayCode: m[1].replace(/\./g,'') };
-  m = normalized.match(/^(\d+)([a-zа-яё].+)$/iu);
-  if (m) {
-    const alias = String(m[2]).replace(/^d(?=\d)/i, 'д');
-    return { qty: Number(m[1]), alias, displayCode: alias.replace(/\./g,'') };
-  }
-  if (/^\d\.\d+$/.test(normalized) || /^\d\.\d\d$/.test(normalized)) {
-    return { qty: 1, alias: normalized.replace(/\./g,''), displayCode: raw };
-  }
-  return { qty: 1, alias: normalized, displayCode: raw };
+  const code = norm(token);
+  let m = code.match(/^(\d+)ав(\d.*)$/iu);
+  if (m) return checkedToken(Number(m[1]), m[2]);
+  m = code.match(/^(.+)\*(\d+)$/u);
+  if (m) return checkedToken(Number(m[2]), m[1]);
+  m = code.match(/^(\d+)[xх×](.+)$/iu);
+  if (m) return checkedToken(Number(m[1]), m[2]);
+  m = code.match(/^(.+)[xх×](\d+)$/iu);
+  if (m) return checkedToken(Number(m[2]), m[1]);
+  m = code.match(/^(\d+)([a-zа-яё].+)$/iu);
+  if (m) return checkedToken(Number(m[1]), m[2]);
+  return checkedToken(1, /^\d\.\d+$/.test(code) ? code.replace(/\./g, '') : code);
 }
 
 function parseCodesLine(line) {
-  return String(line || '')
-    .replace(/[;]+/g,' ')
-    .split(/[, ]+/)
+  const prepared = String(line || '')
+    .replace(/[;]+/g, ' ')
+    .replace(/(\S)\s+[xх×](\d+)/giu, '$1*$2')
+    .replace(/(\S)\s*([xх×*])\s*(\S)/giu, '$1$2$3');
+  return prepared
+    .split(/[,\s]+/)
     .map(s => s.trim())
     .filter(Boolean)
     .map(parseToken);
@@ -637,67 +639,71 @@ function importBulkRows(append = false) {
   runCalc();
 }
 
+function aliasCandidates(alias) {
+  const raw = norm(alias);
+  const keys = [raw, stripDots(raw)];
+  const add = value => { const key = norm(value); if (key && !keys.includes(key)) keys.push(key); const compact = stripDots(value); if (compact && !keys.includes(compact)) keys.push(compact); };
+
+  let m = raw.match(/^([bcd])([1-4])[-_.]?(\d+)$/i);
+  if (m) add(m[1].toLowerCase() === 'c' ? `${m[2]}${m[3]}` : `${m[1].toLowerCase()}${m[2]}${m[3]}`);
+  m = raw.match(/^вн([1-4])[-_.]?(\d+)$/iu);
+  if (m) add(`вн${m[1]}${m[2]}`);
+  if (raw === '309') add('310');
+  return keys;
+}
 function findProduct(series, alias) {
-  const key1 = norm(alias), key2 = stripDots(alias);
-  return state.customMiscMap[key1] || state.customMiscMap[key2] || state.aliasMaps[series]?.get(key1) || state.aliasMaps[series]?.get(key2) || state.miscMap[key1] || state.miscMap[key2] || null;
+  const keys = aliasCandidates(alias);
+  for (const key of keys) {
+    const product = state.customMiscMap[key] || state.aliasMaps[series]?.get(key) || state.miscMap[key];
+    if (product) return product;
+  }
+  return null;
 }
 function reserveNeed(units, reserve) { return Math.ceil(units * (1 + Number(reserve || 0)/100)); }
-function rowsNeededForCandidate(devices, modulesPerPlate, separateIntro, deviceGroups = []) {
-  if (!devices.length) return 1;
-  if (!(modulesPerPlate > 0)) return Number.POSITIVE_INFINITY;
-  if (separateIntro) {
-    const intro = devices[0];
-    if (intro && intro.modules > modulesPerPlate) return Number.POSITIVE_INFINITY;
-    const rest = devices.slice(1);
-    if (!rest.length) return 1;
-    let used = 0;
-    let rows = 1;
-    for (const dev of rest) {
-      if (dev.modules > modulesPerPlate) return Number.POSITIVE_INFINITY;
-      if (used + dev.modules > modulesPerPlate) {
-        rows += 1;
-        used = 0;
-      }
-      used += dev.modules;
-    }
-    return 1 + rows;
-  }
-  let used = 0;
-  let rows = 1;
-  for (const dev of devices) {
-    if (dev.modules > modulesPerPlate) return Number.POSITIVE_INFINITY;
-    if (used + dev.modules > modulesPerPlate) {
-      rows += 1;
-      used = 0;
-    }
+function packRows(deviceGroups, modulesPerPlate, separateIntro = false) {
+  if (!(modulesPerPlate > 0)) return [];
+  const groups = (deviceGroups || []).filter(group => group?.length).map(group => [...group]);
+  const rows = [];
+  let current = [], used = 0;
+  const flush = () => { if (current.length) rows.push(current); current = []; used = 0; };
+  const placeOne = dev => {
+    if (used + dev.modules > modulesPerPlate && current.length) flush();
+    current.push(dev);
     used += dev.modules;
+  };
+  if (separateIntro && groups[0]?.length) {
+    rows.push([groups[0].shift()]);
   }
+  for (const group of groups) {
+    if (!group.length) continue;
+    flush();
+    const groupModules = group.reduce((sum, dev) => sum + dev.modules, 0);
+    if (groupModules <= modulesPerPlate) {
+      rows.push(group);
+    } else {
+      group.forEach(placeOne);
+      flush();
+    }
+  }
+  flush();
   return rows;
 }
-function chooseEnclosure(type, need, devices = [], newRailPerToken = false, deviceGroups = []) {
-  const items = [...(APP_DATA.enclosures_by_type[type] || [])].sort((a,b) => Number(a.capacity_max) - Number(b.capacity_max));
-  if (!items.length) return null;
-  if (/ЩРНМ\s*2\.0/i.test(String(type || ''))) {
-    const supported = items.filter(x => {
-      const key = `${Number(x.height_mm || 0)}х${Number(x.width_mm || 0)}`;
-      return Boolean(MOUNT_LAYOUT_MAP[key]);
-    });
-    if (supported.length) {
-      const demand = Number(need ?? 0);
-      const found = supported.find(x => {
-        const key = `${Number(x.height_mm || 0)}х${Number(x.width_mm || 0)}`;
-        const spec = MOUNT_LAYOUT_MAP[key];
-        const totalCapacity = Number(spec?.count || 0) * Number(spec?.modulesPerPlate || 0);
-        const modulesPerPlate = Number(spec?.modulesPerPlate || 0);
-        const rowCapacity = Number(spec?.count || 0);
-        const neededRows = rowsNeededForCandidate(devices, modulesPerPlate, newRailPerToken, deviceGroups);
-        return totalCapacity >= demand && neededRows <= rowCapacity;
-      });
-      return found || supported[supported.length - 1];
-    }
-  }
-  return items.find(x => Number(x.capacity_max || 0) >= need) || items[items.length - 1] || null;
+function rowsNeededForCandidate(devices, modulesPerPlate, separateIntro, deviceGroups = []) {
+  if (!devices.length) return 1;
+  if (!(modulesPerPlate > 0) || devices.some(dev => dev.modules > modulesPerPlate)) return Number.POSITIVE_INFINITY;
+  const groups = deviceGroups.length ? deviceGroups : [devices];
+  return packRows(groups, modulesPerPlate, separateIntro).length;
 }
+function chooseEnclosure(type, need, devices = [], separateIntro = false, groups = []) {
+  let items = [...(APP_DATA.enclosures_by_type[type] || [])].sort((a,b) => Number(a.capacity_max) - Number(b.capacity_max));
+  if (/ЩРНМ\s*2\.0/i.test(type)) items = items.filter(x => MOUNT_LAYOUT_MAP[enclosureSizeKey(x)]);
+  return items.find(enc => {
+    const spec = mountLayoutSpec(enc);
+    return Math.min(Number(enc.capacity_max), spec.count * spec.modulesPerPlate) >= need &&
+      rowsNeededForCandidate(devices, spec.modulesPerPlate, separateIntro, groups) <= spec.count;
+  }) || items[items.length - 1] || null;
+}
+
 function deriveRailCount(enc) {
   return Number(mountLayoutSpec(enc).count || 1);
 }
@@ -738,7 +744,7 @@ function resolveShield(input, cfg) {
       const p = findProduct(cfg.series, tk.alias);
       if (!p) { unknown.push(`${tk.displayCode || tk.alias} × ${tk.qty}`); continue; }
       const dims = physicalDimensions(p);
-      const mods = Math.max(0.5, +(dims.width_mm / 18).toFixed(3));
+      const mods = Math.max(0.5, dims.width_mm / 18);
       const label = String(tk.displayCode || tk.alias).replace(/\./g,'');
       const normalizedPoles = poleKey(p?.poles || '', { ...p, physical_width_mm: dims.width_mm }) || p?.poles || '';
       for (let i=0; i<tk.qty; i++) {
@@ -754,31 +760,14 @@ function resolveShield(input, cfg) {
   const enclosure = chooseEnclosure(cfg.enclosureType, need, devices, cfg.newRailPerToken, lineDeviceGroups);
   const railCount = deriveRailCount(enclosure);
   const modsPerRail = deriveModulesPerRail(enclosure, railCount);
-  const rows = [];
-  if (cfg.newRailPerToken) {
-    const intro = devices[0] ? [devices[0]] : [];
-    if (intro.length) rows.push(intro);
-    const rest = devices.slice(1);
-    let current = [], used = 0;
-    for (const d of rest) {
-      if (used + d.modules > modsPerRail && current.length) { rows.push(current); current = []; used = 0; }
-      current.push(d);
-      used += d.modules;
-    }
-    if (current.length) rows.push(current);
-  } else {
-    let current = [], used = 0;
-    for (const d of devices) {
-      if (used + d.modules > modsPerRail && current.length) { rows.push(current); current = []; used = 0; }
-      current.push(d);
-      used += d.modules;
-    }
-    if (current.length) rows.push(current);
-  }
+  const rows = packRows(lineDeviceGroups.length ? lineDeviceGroups : [devices], modsPerRail, cfg.newRailPerToken);
   const warnings = [];
-  const totalCapacity = railCount * modsPerRail;
+  const totalCapacity = Math.min(Number(enclosure?.capacity_max || 0), railCount * modsPerRail);
   if (rows.length > railCount) warnings.push(`Требуется ${rows.length} монтажных плат, а в выбранном корпусе доступно ${railCount}.`);
   if (need > totalCapacity) warnings.push(`С учетом запаса требуется ${need} модулей, а выбранный корпус вмещает ${totalCapacity}.`);
+  if (devices.some(d => d.modules > modsPerRail)) warnings.push('Аппарат шире DIN-рейки: требуется другой корпус.');
+  if (!enclosure?.width_mm || !enclosure?.height_mm) warnings.push('Габариты корпуса и расположение реек оценочные: в базе нет монтажных размеров.');
+  if (cfg.series === 'Литой Systeme TMD') warnings.push('Литые аппараты показаны условно; монтаж на DIN-рейку и габариты не подтверждены.');
   const exportRows = buildExportRows(input, cfg.series, enclosure);
   return {
     shieldName: input.shieldName,
@@ -806,7 +795,7 @@ function svgShield(r) {
   const marginL = 55, marginT = 70, marginR = 70, marginB = 40;
   const vbW = w + marginL + marginR, vbH = h + marginT + marginB;
   const x0 = marginL, y0 = marginT, pxPerModule = 18, deviceH = 38;
-  const rp = railPositions(r.enclosure, r.displayRailCount);
+  const rp = railPositions(r.enclosure, Math.max(r.displayRailCount, r.rows.length));
   let out = `<svg class="draw-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${vbW} ${vbH}">`;
   out += `<rect width="100%" height="100%" fill="#f7f8fa"/>`;
   out += `<text x="8" y="24" font-size="22" font-style="italic" fill="#2f4055" font-family="Arial">${esc(r.shieldName)}</text>`;
@@ -847,7 +836,7 @@ function renderSummary(results) {
   const devices = results.reduce((s,r) => s + r.devices.length, 0);
   const modules = results.reduce((s,r) => s + r.moduleSum, 0);
   const issues = results.reduce((s,r) => s + r.unknown.length + r.warnings.length, 0);
-  document.getElementById('summary').innerHTML = `<div class="stat"><b>${shields}</b><span>щитов</span></div><div class="stat"><b>${devices}</b><span>аппаратов</span></div><div class="stat"><b>${modules}</b><span>DIN-модулей</span></div><div class="stat"><b>${issues}</b><span>замечаний</span></div>`;
+  document.getElementById('summary').innerHTML = `<div class="stat"><b>${shields}</b><span>щитов</span></div><div class="stat"><b>${devices}</b><span>аппаратов</span></div><div class="stat"><b>${Number(modules.toFixed(3))}</b><span>DIN-модулей</span></div><div class="stat"><b>${issues}</b><span>замечаний</span></div>`;
 }
 
 function renderExportTable(results) {
@@ -872,7 +861,7 @@ function card(r, idx) {
     ...r.unknown.map(x => `<div class="note err">Не распознан код: ${esc(x)}</div>`)
   ].join('');
   const bomRows = r.exportRows.map(x => `<tr><td>${esc(x.code)}</td><td>${esc(x.reference)}</td><td>${esc(x.name)}</td><td>${esc(x.unit)}</td><td>${x.qty}</td></tr>`).join('');
-  return `<article class="card result" data-i="${idx}"><div class="result-head"><div><h3>${esc(r.shieldName)}</h3><p>${esc(r.codesPart)}</p><div class="badges"><span class="badge">${esc(r.series)}</span><span class="badge">${esc(r.enclosureType)}</span><span class="badge">${enclosureDims(r.enclosure).width || '—'}×${enclosureDims(r.enclosure).height || '—'}×${enclosureDims(r.enclosure).depth || '—'} мм</span><span class="badge">${r.moduleSum} модулей</span></div></div><div class="actions"><button class="secondary svg">SVG</button><button class="secondary dxf">DXF блоками</button><button class="secondary dxf-simple">DXF простой</button></div></div><div class="result-body"><div class="panel"><div class="box"><h4>Подобранный корпус</h4><div><b>${esc(r.enclosure?.article || 'Не найден')}</b></div><div>${esc(r.enclosure?.description || '')}</div><div class="small">Вместимость: ${r.enclosure?.capacity_min ?? '—'}–${r.enclosure?.capacity_max ?? '—'} модулей.</div></div>${notes ? `<div class="box"><h4>Замечания</h4>${notes}</div>` : ''}<div class="box"><h4>Выгрузка по этому щиту</h4><table class="table"><thead><tr><th>Код</th><th>Референс</th><th>Наименование</th><th>Ед.</th><th>Кол-во</th></tr></thead><tbody>${bomRows || '<tr><td colspan="5">Нет данных</td></tr>'}</tbody></table></div></div><div class="drawing-wrap">${svgShield(r)}</div></div></article>`;
+  return `<article class="card result" data-i="${idx}"><div class="result-head"><div><h3>${esc(r.shieldName)}</h3><p>${esc(r.codesPart)}</p><div class="badges"><span class="badge">${esc(r.series)}</span><span class="badge">${esc(r.enclosureType)}</span><span class="badge">${enclosureDims(r.enclosure).width || '—'}×${enclosureDims(r.enclosure).height || '—'}×${enclosureDims(r.enclosure).depth || '—'} мм</span><span class="badge">${Number(r.moduleSum.toFixed(3))} модулей</span></div></div><div class="actions"><button class="secondary svg">SVG</button><button class="secondary dxf">DXF блоками</button><button class="secondary dxf-simple">DXF простой</button></div></div><div class="result-body"><div class="panel"><div class="box"><h4>Подобранный корпус</h4><div><b>${esc(r.enclosure?.article || 'Не найден')}</b></div><div>${esc(r.enclosure?.description || '')}</div><div class="small">Вместимость: ${r.enclosure?.capacity_min ?? '—'}–${r.enclosure?.capacity_max ?? '—'} модулей.</div></div>${notes ? `<div class="box"><h4>Замечания</h4>${notes}</div>` : ''}<div class="box"><h4>Выгрузка по этому щиту</h4><table class="table"><thead><tr><th>Код</th><th>Референс</th><th>Наименование</th><th>Ед.</th><th>Кол-во</th></tr></thead><tbody>${bomRows || '<tr><td colspan="5">Нет данных</td></tr>'}</tbody></table></div></div><div class="drawing-wrap">${svgShield(r)}</div></div></article>`;
 }
 
 function renderResults(results) {
@@ -882,6 +871,7 @@ function renderResults(results) {
   el.innerHTML = results.map(card).join('');
   [...el.querySelectorAll('.result')].forEach(node => {
     const i = Number(node.dataset.i);
+    node.querySelector('.dxf-simple').addEventListener('click', () => exportDxfSimple(i));
     node.querySelector('.svg').addEventListener('click', () => exportSvg(i));
     node.querySelector('.dxf').addEventListener('click', () => exportDxf(i));
   });
@@ -896,7 +886,7 @@ function currentConfig() {
     showAllRails: document.getElementById('showAllRails').checked
   };
 }
-function runCalc() { state.results = getInputs().map(x => resolveShield(x, currentConfig())); renderResults(state.results); }
+function runCalc() { try { state.results = getInputs().map(x => resolveShield(x, currentConfig())); renderResults(state.results); } catch (e) { alert(e.message); } }
 
 function exportSvg(i) { const r = state.results[i]; if (!r) return; blobDownload(`${slug(r.shieldName)}.svg`, 'image/svg+xml;charset=utf-8', svgShield(r)); }
 function xmlEsc(v) { return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -1068,13 +1058,14 @@ function inferBlockName(product, modules) {
   if (/УЗО0?3|УЗО03/i.test(desc)) return (poles === '4P' || poles === '3P+N') ? 'UZO-03_4P' : 'UZO-03_2P';
   if (/ВН-102/i.test(desc) || product?.category === 'load_switch') return `BH-102_${poles || `M${modules}`}`;
   if (/ВА-201/i.test(desc) || /ВА-201/i.test(series)) return `BA-201_${poles || `M${modules}`}`;
-  if (/ВА-105/i.test(desc) || /ВА-105/i.test(series)) return `BA-105_${poles || `M${modules}`}`;
-  if (/ВА-103/i.test(desc) || /ВА-103/i.test(series)) return `BA-103_${poles || `M${modules}`}`;
-  if (/ВА-101/i.test(desc) || /ВА-101/i.test(series)) return `BA-101_${poles || `M${modules}`}`;
+  if (/ВА-105/i.test(desc) || (/ВА-105/i.test(series) && product?.category === 'mcb')) return `BA-105_${poles || `M${modules}`}`;
+  if (/ВА-103/i.test(desc) || (/ВА-103/i.test(series) && product?.category === 'mcb')) return `BA-103_${poles || `M${modules}`}`;
+  if (/ВА-101/i.test(desc) || (/ВА-101/i.test(series) && product?.category === 'mcb')) return `BA-101_${poles || `M${modules}`}`;
   return poles ? `APP_${poles}` : `APP_M${modules}`;
 }
 function deviceBlockName(dev) {
-  return inferBlockName(dev.product, dev.modules);
+  if (dev.product?.block_name) return dev.product.block_name;
+  return inferBlockName(dev.product, dev.modules) + '_W' + String(dev.width_mm).replace('.', '_');
 }
 function deviceInfo(dev) {
   return `${dev.product?.poles || dev.modules + 'M'}${dev.product?.nominal ? ' ' + dev.product.nominal + 'A' : ''}`.trim();
@@ -1089,7 +1080,7 @@ function mountPlateBlockName(r) {
 function shieldBlockName(r) {
   const article = String(r.enclosure?.article || 'NOENC').replace(/[^A-Za-z0-9_]/g,'_');
   const safe = translitDxf(r.shieldName).toUpperCase().replace(/[^A-Z0-9_]+/g,'_').replace(/^_+|_+$/g,'') || 'SHIELD';
-  return `SHIELD_${safe}_${article}`;
+  return `SHIELD_${safe}_${article}_${r.exportIndex || 0}`;
 }
 function buildDeviceBlockDef(name, widthMm) {
   const w = widthMm, h = 38;
@@ -1102,7 +1093,7 @@ function buildDeviceBlockDef(name, widthMm) {
 function buildMountPlateBlockDef(r) {
   const name = mountPlateBlockName(r);
   if (!name) return '';
-  const rp = railPositions(r.enclosure, r.displayRailCount);
+  const rp = railPositions(r.enclosure, Math.max(r.displayRailCount, r.rows.length));
   let out = dxfBlockStart(name);
   out += dxfRect(0,-rp.plateHeight/2,rp.innerW,rp.plateHeight);
   out += dxfLine(0,0,rp.innerW,0);
@@ -1113,7 +1104,7 @@ function buildEnclosureBlockDef(r) {
   const name = enclosureBlockName(r);
   const dims = enclosureDims(r.enclosure);
   const w = Number(dims.width || 300), h = Number(dims.height || 400);
-  const rp = railPositions(r.enclosure, r.displayRailCount);
+  const rp = railPositions(r.enclosure, Math.max(r.displayRailCount, r.rows.length));
   let out = dxfBlockStart(name);
   out += dxfRect(0,0,w,h);
   out += dxfRect(10,10,w-20,h-20);
@@ -1123,7 +1114,7 @@ function buildEnclosureBlockDef(r) {
 }
 function buildShieldBlockDef(r) {
   const name = shieldBlockName(r);
-  const rp = railPositions(r.enclosure, r.displayRailCount);
+  const rp = railPositions(r.enclosure, Math.max(r.displayRailCount, r.rows.length));
   let out = dxfBlockStart(name);
   out += dxfInsert(enclosureBlockName(r), 0, 0);
   if (mountPlateBlockName(r)) {
@@ -1190,7 +1181,7 @@ function buildEntitiesSection(list) {
 function buildSimpleShieldEntities(r, baseX = 40, baseY = 40) {
   const dims = enclosureDims(r.enclosure);
   const w = Number(dims.width || 300), h = Number(dims.height || 400), d = Number(dims.depth || 200);
-  const rp = railPositions(r.enclosure, r.displayRailCount);
+  const rp = railPositions(r.enclosure, Math.max(r.displayRailCount, r.rows.length));
   let out = '';
   out += dxfText(baseX - 45, baseY - 10, 8, r.shieldName);
   out += dxfRect(baseX, baseY, w, h);
@@ -1219,6 +1210,7 @@ function buildSimpleShieldEntities(r, baseX = 40, baseY = 40) {
   return out;
 }
 function makeDxf(list) {
+  list = list.map((r, exportIndex) => ({...r, exportIndex}));
   const header = [
     '0','SECTION','2','HEADER',
     '9','$DWGCODEPAGE','3','ANSI_1251',
@@ -1268,7 +1260,15 @@ function exportDxfSimple(i) { try { const r = state.results[i]; if (!r) return; 
 function exportAllDxf() { try { if (!state.results.length) return; const payload = makeDxf(state.results); blobDownloadCp1251('all_shields_blocks.dxf', 'application/dxf', payload); } catch (e) { console.error(e); setExportStatus(`Ошибка DXF блоками: ${e && e.message ? e.message : e}`); alert(`Ошибка DXF блоками: ${e && e.message ? e.message : e}`); } }
 function exportAllDxfSimple() { try { if (!state.results.length) return; const payload = makeDxfSimple(state.results); blobDownloadCp1251('all_shields_simple.dxf', 'application/dxf', payload); } catch (e) { console.error(e); setExportStatus(`Ошибка DXF простой: ${e && e.message ? e.message : e}`); alert(`Ошибка DXF простой: ${e && e.message ? e.message : e}`); } }
 function exportJson() { blobDownload('result_export.json', 'application/json', JSON.stringify(state.results, null, 2)); }
-function loadExample() { resetRows([{name:'ЩРН-1',codes:'320, 116, 316 x6, д25, км440'},{name:'ЩРН-2',codes:'3.20, 1.16, 3x316, у40, вн332'},{name:'ЩРН-3',codes:'2хд16, 2x220, уздп25, 440'}]); runCalc(); }
+function loadExample() {
+  const series = currentConfig().series;
+  const samples = ['10ав310', '6д16', '3b116'].filter(code => findProduct(series, parseToken(code).alias));
+  const fallback = APP_DATA.products_by_series[series]?.[0]?.alias || '';
+  const loadSwitch = findProduct(series, 'вн316') ? '2вн316' : (findProduct(series, 'вн332') ? '2вн332' : '');
+  const rows = [{name:'Количество и рейки', codes:samples.length ? samples.join('\n') : fallback}];
+  if (loadSwitch) rows.push({name:'Выключатель нагрузки', codes:loadSwitch});
+  resetRows(rows); runCalc();
+}
 function init() {
   buildMaps();
   fillControls();
